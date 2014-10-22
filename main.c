@@ -4,8 +4,7 @@
 void my_hook(int val)
 {
     printf("%s\n", __FUNCTION__);
-    //printf("Hooked with %d\n", val);
-    //sleep(1);
+    printf("%s: Hooked with %d\n", __FUNCTION__, val);
 }
 
 int main()
