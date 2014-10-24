@@ -1,88 +1,10 @@
 #include "apihook.h"
 #include <stdlib.h>
 #include <stdio.h>
-#include <time.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <string.h>
 
-void api_hook_test(int val)
-{
-#if 0
-    int cal;
-    int mas[10];
-    int i;
-    
-    __asm__ ( "nop\n"
-              "nop\n"
-              "nop\n"
-              "nop\n"
-              "nop\n"
-              "nop\n"
-              "nop\n"
-    );
-    
-    cal = val * val;
-
-    srand(time(0));
-
-    for(i = 0; i < sizeof(mas)/sizeof(mas[0]); i++)
-    {
-        mas[i] = rand() + cal;
-    }
-
-    printf("val * val = %d and first elem %d\n", cal, mas[0]);
-
-    for(i = 0; i < sizeof(mas)/sizeof(mas[0]); i++)
-        cal += mas[i];
-
-    printf("my val %d\n", val);
-    val += cal;
-    sleep(1);
-#else
-    __asm__ ( "nop\n"
-    "nop\n"
-    "nop\n"
-    "nop\n"
-    "nop\n"
-    "nop\n"
-    "nop\n"
-    );
-    printf("%s: Val %d\n", __FUNCTION__, val);
-    sleep(1);
-#endif
-}
-
-#if 0
-void my_mega_code()
-{
-    int val = 234;
-
-    printf("My mega function %d\n", val);
-}
-
-void jump_code(void (*func)())
-{
-    int value = 0x12345678;
-#if 0
-    __asm__ ( /*"mov.l %0,r0\n"*/
-              "braf %0\n"
-              "nop\n"
-              : /* no output registers */
-              : "r"(value) );
-#endif
-    __asm__ ( /*"mov.l %0,r0\n"*/
-              "jsr @%0\n"
-              "nop\n"
-              : /* no output registers */
-              : "r"(value) );
-
-//    my_mega_code();
-              
-//    (*func)();
-//    printf("Hello\n");
-}
-#endif
 int api_hook_set(void *desire_func, void *hook)
 {
     unsigned int desired_cpfunc_offset = 0;
@@ -175,9 +97,10 @@ int api_hook_set(void *desire_func, void *hook)
                 for(i = 0; i < 6; i++)
                 {
                     unsigned short instruction = *((unsigned short*)(desire_func + 2 * i));
-                    
+
                     if((instruction == 0x09) // nop
-                       || ((instruction & 0xF0FF) == 0x4022) // sts.l pr,@-Rn
+                       || ((instruction & 0xF000) == 0xe000) // mov #imm,Rn
+
                        || ((instruction & 0xF00F) == 0x6003) // mov Rm,Rn
                        || ((instruction & 0xF00F) == 0x2000) // mov.b Rm,@Rn
                        || ((instruction & 0xF00F) == 0x2001) // mov.w Rm,@Rn
@@ -190,12 +113,49 @@ int api_hook_set(void *desire_func, void *hook)
                        || ((instruction & 0xF00F) == 0x2004) // mov.b Rm,@-Rn
                        || ((instruction & 0xF00F) == 0x2005) // mov.w Rm,@-Rn
                        || ((instruction & 0xF00F) == 0x2006) // mov.l Rm,@-Rn
-
-
+                       
+                       || ((instruction & 0xF00F) == 0x6004) // mov.b @Rm+,Rn
+                       || ((instruction & 0xF00F) == 0x6005) // mov.w @Rm+,Rn
+                       || ((instruction & 0xF00F) == 0x6006) // mov.l @Rm+,Rn
+                       
+                       || ((instruction & 0xF00F) == 0x0007) // mul.l Rm,Rn
+                       
+                       || ((instruction & 0xF0FF) == 0x400B) // jsr @Rn
+                       || (instruction == 0x000B) // rts
+                       
+                       || ((instruction & 0xF0FF) == 0x4022) // sts.l pr,@-Rn
                             )
                     {
                         // just copy opcode
                         *((unsigned short*)((void*)buffer + desired_cpfunc_offset + 2 * i)) = instruction;
+                    }
+                    else if((instruction & 0xF000) == 0xD000) // mov.l @(disp,PC),Rn - MOVe constant value
+                    {
+                        int disp = (instruction & 0xFF) << 2; // offset from (desire_func + 2 * i)
+                        
+                        //printf("%s %d: ORIGINAL INSTRUCTION 0x%X\n", __FUNCTION__, __LINE__, instruction);
+                        
+                        // modify instruction
+                        instruction = (instruction & 0xFF00) |  ((additional_data_offset - (desired_cpfunc_offset + ((2 * i) & ~0x3)) - 4) >> 2);
+                        //printf("%s %d: NEW INSTRUCTION 0x%X\n", __FUNCTION__, __LINE__, instruction);
+
+                        // store data
+                        additional_data_offset = (additional_data_offset + 3) & ~0x3;
+                        *((unsigned short*)((void*)buffer + additional_data_offset)) = *((unsigned short*)(desire_func + ((2 * i) & ~0x3) + 4 + disp));
+                        //printf("%s %d: COPIED DATA 0x%X\n", __FUNCTION__, __LINE__, *((unsigned short*)(desire_func + ((2 * i) & ~0x3) + 4 + disp)));
+                        additional_data_offset += 2;
+                        disp += 2;
+                        *((unsigned short*)((void*)buffer + additional_data_offset)) = *((unsigned short*)(desire_func + ((2 * i) & ~0x3) + 4 + disp));
+                        //printf("%s %d: COPIED DATA 0x%X\n", __FUNCTION__, __LINE__, *((unsigned short*)(desire_func + ((2 * i) & ~0x3) + 4 + disp)));
+                        additional_data_offset += 2;
+                        // store instruction
+                        *((unsigned short*)((void*)buffer + desired_cpfunc_offset + 2 * i)) = instruction;
+                    }
+                    else if((instruction & 0xF0FF) == 0x402B) // jmp @Rn
+                    {
+                        // just copy opcode
+                        *((unsigned short*)((void*)buffer + desired_cpfunc_offset + 2 * i)) = instruction;
+                        printf("%s %d: Need make visual control of function with address 0x%08X\n", __FUNCTION__, __LINE__, desire_func);
                     }
                     else
                     {
