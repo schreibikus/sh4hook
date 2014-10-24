@@ -16,10 +16,22 @@
 #define printf(x...) printk(x)
 #endif
 
+#define CHECK_REGISTER(x) { \
+                            if((x) == 0) \
+                                have_r0 = 0; \
+                            else if((x) == 1) \
+                                have_r1 = 0; \
+                            else if((x) == 2) \
+                                have_r2 = 0; \
+                            else if((x) == 3) \
+                                have_r3 = 0; \
+                          }
+
 int api_hook_set(void *desire_func, void *hook)
 {
     unsigned int desired_cpfunc_offset = 0;
     unsigned int additional_data_offset = 0;
+    unsigned int jump_code_offset = 0;
 #ifndef __KERNEL__
     int pagesize = sysconf(_SC_PAGE_SIZE);
 #else
@@ -27,7 +39,12 @@ int api_hook_set(void *desire_func, void *hook)
 #endif
     unsigned short *programm;
     unsigned short *buffer;
+    unsigned short regnum;
     unsigned short *tptr;
+    int have_r0 = 1;
+    int have_r1 = 1;
+    int have_r2 = 1;
+    int have_r3 = 1;
     int i;
 
     printf("Set branch from 0x%X address to 0x%X address\n", (unsigned int)desire_func, (unsigned int)hook);
@@ -95,8 +112,9 @@ int api_hook_set(void *desire_func, void *hook)
                 *programm++ = 0x09; // end copiied from desire_func
                 *programm++ = 0x09; // not function for avoid some issues
                 *programm++ = 0x09; // not function for avoid some issues
-                *programm++ = 0xd001; // mov.l (buffer - desire_func - 6),r0
-                *programm++ = 0x402b; // jmp r0
+                jump_code_offset = (unsigned int)programm - (unsigned int)buffer; // offset for copy code
+                *programm++ = 0xd001; // mov.l (buffer - desire_func - 6),r0 - MODIFIED !!!
+                *programm++ = 0x402b; // jmp r0                              - MODIFIED !!!
                 *programm++ = 0x09; // nop - executed before jmp
                 *programm++ = 0x09; // nop - for align 4, can be other value
                 *programm++ = ((unsigned int)desire_func + 12) & 0xFFFF;
@@ -123,47 +141,52 @@ int api_hook_set(void *desire_func, void *hook)
                     unsigned short instruction = *((unsigned short*)(desire_func + 2 * i));
 
                     if((instruction == 0x09) // nop
-                       || ((instruction & 0xF000) == 0xe000) // mov #imm,Rn
-
-                       || ((instruction & 0xF00F) == 0x6003) // mov Rm,Rn
-                       || ((instruction & 0xF00F) == 0x2000) // mov.b Rm,@Rn
-                       || ((instruction & 0xF00F) == 0x2001) // mov.w Rm,@Rn
-                       || ((instruction & 0xF00F) == 0x2002) // mov.l Rm,@Rn
-
-                       || ((instruction & 0xF00F) == 0x6000) // mov.b @Rm,Rn
-                       || ((instruction & 0xF00F) == 0x6001) // mov.w @Rm,Rn
-                       || ((instruction & 0xF00F) == 0x6002) // mov.l @Rm,Rn
-
-                       || ((instruction & 0xF00F) == 0x2004) // mov.b Rm,@-Rn
-                       || ((instruction & 0xF00F) == 0x2005) // mov.w Rm,@-Rn
-                       || ((instruction & 0xF00F) == 0x2006) // mov.l Rm,@-Rn
-
-                       || ((instruction & 0xF00F) == 0x6004) // mov.b @Rm+,Rn
-                       || ((instruction & 0xF00F) == 0x6005) // mov.w @Rm+,Rn
-                       || ((instruction & 0xF00F) == 0x6006) // mov.l @Rm+,Rn
-
-                       || ((instruction & 0xF00F) == 0x300C) // add Rm,Rn
-                       || ((instruction & 0xF000) == 0x7000) // add #imm,Rn
-                       || ((instruction & 0xF00F) == 0x300E) // addc Rm,Rn
-                       || ((instruction & 0xF00F) == 0x300F) // addv Rm,Rn
-
-                       || ((instruction & 0xF00F) == 0x0007) // mul.l Rm,Rn
-
-                       || ((instruction & 0xF0FF) == 0x400B) // jsr @Rn
-                       || (instruction == 0x000B) // rts
-
-                       || ((instruction & 0xF0FF) == 0x4022) // sts.l pr,@-Rn
-                            )
+                        || (instruction == 0x000B) // rts
+                        )
                     {
                         // just copy opcode
-                        *((unsigned short*)((void*)buffer + desired_cpfunc_offset + 2 * i)) = instruction;
+                    }
+                    else if(((instruction & 0xF000) == 0xe000) // mov #imm,Rn
+                        || ((instruction & 0xF00F) == 0x6003) // mov Rm,Rn
+                        || ((instruction & 0xF00F) == 0x2000) // mov.b Rm,@Rn
+                        || ((instruction & 0xF00F) == 0x2001) // mov.w Rm,@Rn
+                        || ((instruction & 0xF00F) == 0x2002) // mov.l Rm,@Rn
+
+                        || ((instruction & 0xF00F) == 0x6000) // mov.b @Rm,Rn
+                        || ((instruction & 0xF00F) == 0x6001) // mov.w @Rm,Rn
+                        || ((instruction & 0xF00F) == 0x6002) // mov.l @Rm,Rn
+
+                        || ((instruction & 0xF00F) == 0x2004) // mov.b Rm,@-Rn
+                        || ((instruction & 0xF00F) == 0x2005) // mov.w Rm,@-Rn
+                        || ((instruction & 0xF00F) == 0x2006) // mov.l Rm,@-Rn
+
+                        || ((instruction & 0xF00F) == 0x6004) // mov.b @Rm+,Rn
+                        || ((instruction & 0xF00F) == 0x6005) // mov.w @Rm+,Rn
+                        || ((instruction & 0xF00F) == 0x6006) // mov.l @Rm+,Rn
+
+                        || ((instruction & 0xF00F) == 0x300C) // add Rm,Rn
+                        || ((instruction & 0xF000) == 0x7000) // add #imm,Rn
+                        || ((instruction & 0xF00F) == 0x300E) // addc Rm,Rn
+                        || ((instruction & 0xF00F) == 0x300F) // addv Rm,Rn
+
+                        || ((instruction & 0xF00F) == 0x0007) // mul.l Rm,Rn
+                        || ((instruction & 0xF0FF) == 0x400B) // jsr @Rn
+
+                        || ((instruction & 0xF0FF) == 0x4022) // sts.l pr,@-Rn
+
+                         )
+                    {
+                        CHECK_REGISTER((instruction >> 8) & 0xF);
+                        // just copy opcode
                     }
                     else if((instruction & 0xF000) == 0xD000) // mov.l @(disp,PC),Rn - MOVe constant value
                     {
                         int disp = (instruction & 0xFF) << 2; // offset from (desire_func + 2 * i)
-                        
+
+                        CHECK_REGISTER((instruction >> 8) & 0xF);
+
                         //printf("%s %d: ORIGINAL INSTRUCTION 0x%X\n", __FUNCTION__, __LINE__, instruction);
-                        
+
                         // modify instruction
                         instruction = (instruction & 0xFF00) |  ((additional_data_offset - (desired_cpfunc_offset + ((2 * i) & ~0x3)) - 4) >> 2);
                         //printf("%s %d: NEW INSTRUCTION 0x%X\n", __FUNCTION__, __LINE__, instruction);
@@ -177,38 +200,49 @@ int api_hook_set(void *desire_func, void *hook)
                         *((unsigned short*)((void*)buffer + additional_data_offset)) = *((unsigned short*)(desire_func + ((2 * i) & ~0x3) + 4 + disp));
                         //printf("%s %d: COPIED DATA 0x%X\n", __FUNCTION__, __LINE__, *((unsigned short*)(desire_func + ((2 * i) & ~0x3) + 4 + disp)));
                         additional_data_offset += 2;
-                        // store instruction
-                        *((unsigned short*)((void*)buffer + desired_cpfunc_offset + 2 * i)) = instruction;
                     }
                     else if((instruction & 0xF0FF) == 0x402B) // jmp @Rn
                     {
-                        // just copy opcode
-                        *((unsigned short*)((void*)buffer + desired_cpfunc_offset + 2 * i)) = instruction;
+                        CHECK_REGISTER((instruction >> 8) & 0xF);
                         printf("%s %d: Need make visual control of function with address 0x%08X\n", __FUNCTION__, __LINE__, (unsigned int)desire_func);
                     }
                     else
                     {
                         printf("%s %d: Have some interesting instruction 0x%04X\n", __FUNCTION__, __LINE__, instruction);
-                        *((unsigned short*)((void*)buffer + desired_cpfunc_offset + 2 * i)) = instruction;
                     }
+
+                    // just save opcode
+                    *((unsigned short*)((void*)buffer + desired_cpfunc_offset + 2 * i)) = instruction;
                 }
 
-#if 0
-                programm = desire_func;
-                *programm++ = 0xd001; // mov.l (buffer - desire_func - 6),r0
-                *programm++ = 0x0023; // braf r0
-                *programm++ = 0x09; // nop - executed after braf
-                *programm++ = 0x09; // nop - for align 4, can be other value
-                *programm++ = (unsigned int)((unsigned int)buffer - (unsigned int)desire_func - 6) & 0xFFFF;
-                *programm++ = ((unsigned int)((unsigned int)buffer - (unsigned int)desire_func - 6) >> 16) & 0xFFFF;
-#endif
-                programm = desire_func;
-                *programm++ = 0xd001; // mov.l (buffer),r0
-                *programm++ = 0x402b; // jmp r0
-                *programm++ = 0x09; // nop - executed after jmp
-                *programm++ = 0x09; // nop - for align 4, can be other value
-                *programm++ = ((unsigned int)buffer) & 0xFFFF;
-                *programm++ = (((unsigned int)buffer) >> 16) & 0xFFFF;
+                if(have_r0 || have_r1 || have_r2 || have_r3)
+                {
+                    if(have_r3)
+                        regnum = 3;
+                    else if(have_r2)
+                        regnum = 2;
+                    else if(have_r1)
+                        regnum = 1;
+                    else
+                        regnum = 0;
+
+                    programm = desire_func;
+                    *programm++ = (0xd001 | (regnum << 8)); // mov.l (buffer),Rn - THIS MODIFICATION IS COSMETIC
+                    *programm++ = (0x402b | (regnum << 8)); // jmp Rn            - THIS MODIFICATION IS COSMETIC
+                    *programm++ = 0x09; // nop - executed after jmp
+                    *programm++ = 0x09; // nop - for align 4, can be other value
+                    *programm++ = ((unsigned int)buffer) & 0xFFFF;
+                    *programm++ = (((unsigned int)buffer) >> 16) & 0xFFFF;
+
+                    // !!! IMPORTANT !!! WE MODIFY REGISTER !!!
+                    programm = (unsigned short *)((void*)buffer + jump_code_offset);
+                    *programm++ = (0xd001 | (regnum << 8)); // mov.l (buffer),Rn
+                    *programm++ = (0x402b | (regnum << 8)); // jmp Rn
+                }
+                else
+                {
+                    printf("No free registers %d %d %d %d\n", have_r0, have_r1, have_r2, have_r3);
+                }
 
                 tptr = desire_func;
                 for(i = 0; i < 10; i++)
