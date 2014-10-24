@@ -129,24 +129,29 @@ int api_hook_set(void *desire_func, void *hook)
                        || ((instruction & 0xF00F) == 0x2000) // mov.b Rm,@Rn
                        || ((instruction & 0xF00F) == 0x2001) // mov.w Rm,@Rn
                        || ((instruction & 0xF00F) == 0x2002) // mov.l Rm,@Rn
-                       
+
                        || ((instruction & 0xF00F) == 0x6000) // mov.b @Rm,Rn
                        || ((instruction & 0xF00F) == 0x6001) // mov.w @Rm,Rn
                        || ((instruction & 0xF00F) == 0x6002) // mov.l @Rm,Rn
-                       
+
                        || ((instruction & 0xF00F) == 0x2004) // mov.b Rm,@-Rn
                        || ((instruction & 0xF00F) == 0x2005) // mov.w Rm,@-Rn
                        || ((instruction & 0xF00F) == 0x2006) // mov.l Rm,@-Rn
-                       
+
                        || ((instruction & 0xF00F) == 0x6004) // mov.b @Rm+,Rn
                        || ((instruction & 0xF00F) == 0x6005) // mov.w @Rm+,Rn
                        || ((instruction & 0xF00F) == 0x6006) // mov.l @Rm+,Rn
-                       
+
+                       || ((instruction & 0xF00F) == 0x300C) // add Rm,Rn
+                       || ((instruction & 0xF000) == 0x7000) // add #imm,Rn
+                       || ((instruction & 0xF00F) == 0x300E) // addc Rm,Rn
+                       || ((instruction & 0xF00F) == 0x300F) // addv Rm,Rn
+
                        || ((instruction & 0xF00F) == 0x0007) // mul.l Rm,Rn
-                       
+
                        || ((instruction & 0xF0FF) == 0x400B) // jsr @Rn
                        || (instruction == 0x000B) // rts
-                       
+
                        || ((instruction & 0xF0FF) == 0x4022) // sts.l pr,@-Rn
                             )
                     {
