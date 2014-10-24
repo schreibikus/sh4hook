@@ -1,15 +1,30 @@
 #include "apihook.h"
+#ifndef __KERNEL__
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <string.h>
+#else
+#include <linux/kernel.h>
+#include <linux/string.h>
+#include <linux/mm.h>
+#include <asm/page.h>
+#endif
+
+#ifdef __KERNEL__
+#define printf(x...) printk(x)
+#endif
 
 int api_hook_set(void *desire_func, void *hook)
 {
     unsigned int desired_cpfunc_offset = 0;
     unsigned int additional_data_offset = 0;
+#ifndef __KERNEL__
     int pagesize = sysconf(_SC_PAGE_SIZE);
+#else
+    int pagesize = PAGE_SIZE;
+#endif
     unsigned short *programm;
     unsigned short *buffer;
     unsigned short *tptr;
@@ -17,8 +32,8 @@ int api_hook_set(void *desire_func, void *hook)
 
     printf("Set branch from 0x%X address to 0x%X address\n", (unsigned int)desire_func, (unsigned int)hook);
     for(i = 0, tptr = desire_func; i < 10; i++, tptr++)
-        printf("desired function 0x%08X: data 0x%04X\n", tptr, *tptr);
-
+        printf("desired function 0x%08X: data 0x%04X\n", (unsigned int)tptr, *tptr);
+#ifndef __KERNEL__
     programm = desire_func;
     if (mprotect((void*)((unsigned int)programm & ~(pagesize - 1)), pagesize, PROT_READ | PROT_WRITE | PROT_EXEC) < 0)
     {
@@ -37,6 +52,15 @@ int api_hook_set(void *desire_func, void *hook)
             {
                 printf("%s failed mprotect!!\n", __FUNCTION__);
             }
+#else
+    {
+        {
+            buffer = kmalloc(pagesize, GFP_KERNEL);
+            if(!buffer)
+            {
+                printk("%s failed alloc memory!\n", __FUNCTION__);
+            }
+#endif
             else
             {
                 memset((void*)buffer, 0, pagesize);
@@ -155,7 +179,7 @@ int api_hook_set(void *desire_func, void *hook)
                     {
                         // just copy opcode
                         *((unsigned short*)((void*)buffer + desired_cpfunc_offset + 2 * i)) = instruction;
-                        printf("%s %d: Need make visual control of function with address 0x%08X\n", __FUNCTION__, __LINE__, desire_func);
+                        printf("%s %d: Need make visual control of function with address 0x%08X\n", __FUNCTION__, __LINE__, (unsigned int)desire_func);
                     }
                     else
                     {
@@ -184,7 +208,7 @@ int api_hook_set(void *desire_func, void *hook)
                 tptr = desire_func;
                 for(i = 0; i < 10; i++)
                 {
-                    printf("Modified desired function 0x%08X: data 0x%04X\n", tptr, *tptr);
+                    printf("Modified desired function 0x%08X: data 0x%04X\n", (unsigned int)tptr, *tptr);
                     tptr++;
                 }
 
@@ -192,10 +216,11 @@ int api_hook_set(void *desire_func, void *hook)
                 tptr = buffer;
                 for(i = 0; (i < 50) && (*tptr); i++)
                 {
-                    printf("tptr 0x%08X: data 0x%04X\n", tptr, *tptr);
+                    printf("tptr 0x%08X: data 0x%04X\n", (unsigned int)tptr, *tptr);
                     tptr++;
                 }
             }
         }
     }
+    return 0;
 }
