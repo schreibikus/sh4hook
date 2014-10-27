@@ -10,7 +10,7 @@ void my_hook(int val)
 
 void api_hook_test(int val)
 {
-    #if 1
+    #if 0
     int cal = val * val;
     int mas[10];
     int i;
@@ -41,7 +41,11 @@ void api_hook_test(int val)
     "nop\n"
     );
     #endif
-    //printf("%s: Val %d\n", __FUNCTION__, val);
+    int destval;
+    __asm__ ( "mov r5,%0\n"
+            : "=r" (destval)
+    );
+    printf("%s: Val %d and testval %d\n", __FUNCTION__, val, destval);
     sleep(1);
     #endif
 }
