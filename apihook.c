@@ -16,10 +16,11 @@
 #define printf(x...) printk(x)
 #endif
 
-int api_hook_set(void *desire_func, void *hook)
+int api_hook_set(void *desire_func, void *hook, void *post_hook)
 {
     unsigned int desired_cpfunc_offset = 0;
     unsigned int additional_data_offset = 0;
+    unsigned int post_hook_init_code_offset = 0;
     unsigned int hook_code_offset = 0;
 #ifndef __KERNEL__
     int pagesize = sysconf(_SC_PAGE_SIZE);
@@ -101,6 +102,22 @@ int api_hook_set(void *desire_func, void *hook)
                 *programm++ = 0x60f6; // mov.l @r15+,r0
                 *programm++ = 0x09; // for future usage
 
+                if(post_hook)
+                {
+                    *programm++ = 0x2f46; // mov.l r4, @-r15
+                    *programm++ = 0x2f56; // mov.l r5, @-r15
+                    *programm++ = 0x2f66; // mov.l r6, @-r15
+                    *programm++ = 0x2f76; // mov.l r7, @-r15
+                    *programm++ = 0x4f22; // sts.l pr, @-r15
+                    // modify PR register
+                    *programm++ = 0x2f06; // mov.l r0, @-r15
+                    post_hook_init_code_offset = (unsigned int)programm - (unsigned int)buffer; // offset for modify next command
+                    *programm++ = 0xd000; // mov.l #post_hook_init,r0 - calculated later
+                    *programm++ = 0x402a; // lds r0,pr // store return address
+                    *programm++ = 0x60f6; // mov.l @r15+,r0
+                    *programm++ = 0x09; // for future usage
+                }
+
                 desired_cpfunc_offset = (unsigned int)programm - (unsigned int)buffer; // offset for copy code
                 *programm++ = 0x09; // start copiied from desire_func
                 *programm++ = 0x09;
@@ -132,9 +149,33 @@ int api_hook_set(void *desire_func, void *hook)
                 *programm++ = 0x09;
 
                 // calculate mov.l #hook,r0 command
-                *((unsigned short*)((void*)buffer + hook_code_offset)) = 0xd000 | (((unsigned int)programm - (unsigned int)buffer - ((hook_code_offset + 3) & ~0x3)) >> 2);
+                *((unsigned short*)((void*)buffer + hook_code_offset)) = 0xd000 | (((((unsigned int)programm - (unsigned int)buffer - hook_code_offset + 3) & ~0x3) - 4) >> 2);
                 *programm++ = ((unsigned int)hook) & 0xFFFF;
                 *programm++ = (((unsigned int)hook) >> 16) & 0xFFFF;
+
+                if(post_hook)
+                {
+                    // calculate mov.l #post_hook_init,r0 command
+                    *((unsigned short*)((void*)buffer + post_hook_init_code_offset)) = 0xd000 | (((((unsigned int)programm - (unsigned int)buffer - post_hook_init_code_offset + 3) & ~0x3) - 4) >> 2);
+                    post_hook_init_code_offset = (unsigned int)programm + 4;
+                    printf("Jump address 0x%X\n", post_hook_init_code_offset);
+                    *programm++ = ((unsigned int)post_hook_init_code_offset) & 0xFFFF;
+                    *programm++ = (((unsigned int)post_hook_init_code_offset) >> 16) & 0xFFFF;
+
+                    *programm++ = 0x09;
+                    *programm++ = 0x4f26; // lds.l @r15+,pr // restore return address
+                    *programm++ = 0x67f6; // mov.l @r15+,r7
+                    *programm++ = 0x66f6; // mov.l @r15+,r6
+                    *programm++ = 0x65f6; // mov.l @r15+,r5
+                    *programm++ = 0x64f6; // mov.l @r15+,r4
+
+                    *programm++ = 0x2f06; // mov.l r0, @-r15
+                    *programm++ = 0xd001; // mov.l (buffer),r0
+                    *programm++ = 0x402b; // jmp @r0
+                    *programm++ = 0x60f6; // mov.l @r15+,r0 - executed after jmp and for align 4
+                    *programm++ = ((unsigned int)post_hook) & 0xFFFF;
+                    *programm++ = (((unsigned int)post_hook) >> 16) & 0xFFFF;
+                }
 
                 // copy code
                 for(i = 0; i < 6; i++)
@@ -229,7 +270,7 @@ int api_hook_set(void *desire_func, void *hook)
 
                 printf("%s: Our hook function code\n", __FUNCTION__);
                 tptr = buffer;
-                for(i = 0; (i < 50) && (*tptr); i++)
+                for(i = 0; (i < 100) && (*tptr); i++)
                 {
                     printf("tptr 0x%08X: data 0x%04X\n", (unsigned int)tptr, *tptr);
                     tptr++;

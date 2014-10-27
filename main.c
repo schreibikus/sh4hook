@@ -8,6 +8,11 @@ void my_hook(int val)
     printf("%s: Hooked with %d\n", __FUNCTION__, val);
 }
 
+void my_post_hook(int val)
+{
+    printf("%s: Post Hooked with %d\n", __FUNCTION__, val);
+}
+
 void api_hook_test(int val)
 {
     #if 0
@@ -53,7 +58,7 @@ void api_hook_test(int val)
 int main()
 {
     printf("Address of test function is 0x%X\n", (unsigned int)api_hook_test);
-    api_hook_set(api_hook_test, my_hook);
+    api_hook_set(api_hook_test, my_hook, my_post_hook);
     api_hook_test(4);
     api_hook_test(7);
     api_hook_test(10);
