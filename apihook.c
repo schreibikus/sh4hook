@@ -69,24 +69,35 @@ int api_hook_set(void *desire_func, void *hook)
                 printf("OK!\n");
                 programm = buffer;
 
-                *programm++ = 0xd015; // mov.l #hook,r0
+                *programm++ = 0x2f06; // mov.l r0, @-r15
+                *programm++ = 0x2f16; // mov.l r1, @-r15
+                *programm++ = 0x2f26; // mov.l r2, @-r15
+                *programm++ = 0x2f36; // mov.l r3, @-r15
                 *programm++ = 0x2f46; // mov.l r4, @-r15
                 *programm++ = 0x2f56; // mov.l r5, @-r15
                 *programm++ = 0x2f66; // mov.l r6, @-r15
                 *programm++ = 0x2f76; // mov.l r7, @-r15
+                // Save T-flag
+                *programm++ = 0x0029; // movt r0
+                *programm++ = 0x2f06; // mov.l r0, @-r15
+                // Save PR register
                 *programm++ = 0x4f22; // sts.l pr, @-r15
-                *programm++ = 0x09; // for future usage
-                *programm++ = 0x09; // for future usage
+                *programm++ = 0xd014; // mov.l #hook,r0
                 *programm++ = 0x400b; // JSR R0 - must be aligned
                 *programm++ = 0x09; // nop - executed after JSR
                 *programm++ = 0x4f26; // lds.l @r15+,pr // restore return address
+                *programm++ = 0x60f6; // mov.l @r15+,r0 // restore T flag
+                *programm++ = 0x4001; // shlr r0        // restore T flag
                 *programm++ = 0x67f6; // mov.l @r15+,r7
                 *programm++ = 0x66f6; // mov.l @r15+,r6
                 *programm++ = 0x65f6; // mov.l @r15+,r5
                 *programm++ = 0x64f6; // mov.l @r15+,r4
+                *programm++ = 0x63f6; // mov.l @r15+,r3
+                *programm++ = 0x62f6; // mov.l @r15+,r2
+                *programm++ = 0x61f6; // mov.l @r15+,r1
+                *programm++ = 0x60f6; // mov.l @r15+,r0
                 *programm++ = 0x09; // for future usage
-                *programm++ = 0x09; // for future usage
-                *programm++ = 0x09; // for future usage
+
                 desired_cpfunc_offset = (unsigned int)programm - (unsigned int)buffer; // offset for copy code
                 *programm++ = 0x09; // start copiied from desire_func
                 *programm++ = 0x09;
