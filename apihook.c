@@ -20,6 +20,7 @@ int api_hook_set(void *desire_func, void *hook)
 {
     unsigned int desired_cpfunc_offset = 0;
     unsigned int additional_data_offset = 0;
+    unsigned int hook_code_offset = 0;
 #ifndef __KERNEL__
     int pagesize = sysconf(_SC_PAGE_SIZE);
 #else
@@ -82,7 +83,9 @@ int api_hook_set(void *desire_func, void *hook)
                 *programm++ = 0x2f06; // mov.l r0, @-r15
                 // Save PR register
                 *programm++ = 0x4f22; // sts.l pr, @-r15
-                *programm++ = 0xd014; // mov.l #hook,r0
+                hook_code_offset = (unsigned int)programm - (unsigned int)buffer; // offset for modify next command
+                *programm++ = 0xd000; // mov.l #hook,r0 - calculated later
+
                 *programm++ = 0x400b; // JSR R0 - must be aligned
                 *programm++ = 0x09; // nop - executed after JSR
                 *programm++ = 0x4f26; // lds.l @r15+,pr // restore return address
@@ -127,6 +130,9 @@ int api_hook_set(void *desire_func, void *hook)
                 *programm++ = 0x09;
                 *programm++ = 0x09;
                 *programm++ = 0x09;
+
+                // calculate mov.l #hook,r0 command
+                *((unsigned short*)((void*)buffer + hook_code_offset)) = 0xd000 | (((unsigned int)programm - (unsigned int)buffer - ((hook_code_offset + 3) & ~0x3)) >> 2);
                 *programm++ = ((unsigned int)hook) & 0xFFFF;
                 *programm++ = (((unsigned int)hook) >> 16) & 0xFFFF;
 
